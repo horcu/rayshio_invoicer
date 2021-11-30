@@ -1,22 +1,20 @@
 import 'dart:io';
 import 'dart:async';
 import 'package:intl/intl.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:rayshio_invoicer/InvObject.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'PDFScreen.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
-
+import 'package:path/path.dart' as p;
 
 void main() {
   runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {
-
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -33,7 +31,7 @@ class MyApp extends StatelessWidget {
         // is not restarted.
         primarySwatch: Colors.blue,
       ),
-      home: MyHomePage(title: 'RAYSH.IO LLC INVOICER'),
+      home: MyHomePage(title: 'Raysh.io LLC'),
     );
   }
 }
@@ -43,12 +41,16 @@ class MyHomePage extends StatefulWidget {
 
   final String title;
 
-
   @override
   _MyHomePageState createState() => _MyHomePageState();
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+
+  _MyHomePageState(){
+    _invoiceList();
+  }
+
   String _targetFileName = 'Invoice_' + new DateTime.now().millisecond.toString();
   late String _generatedPdfFilePath;
 
@@ -65,97 +67,323 @@ class _MyHomePageState extends State<MyHomePage> {
 
   String _invoiceNumber = '';
 
-  String _dueDate = '2021/12/10';
+  String _dueDate = DateTime.now().toString();
+  String _defaultClient = 'FRB Washington DC';
+  String _consultant = 'Horatio A Cummings';
+
+  late SnackBar snackBar;
+  final DateFormat formatter = DateFormat('yyyy-MM-dd');
+
+  String _mainDirectory = '';
+
+  List _fileList = [];
+
+  List _userFriendlyInvoiceList = [];
 
   @override
   Widget build(BuildContext context) {
-    //initPdfFile();
 
-    return Scaffold(
+    return MaterialApp(
+        home: DefaultTabController(
+        length: 2,
+        child:
+      Scaffold(
       appBar: AppBar(
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
+        bottom: const TabBar(
+          tabs: [
+            Tab(icon: Icon(Icons.receipt)),
+            Tab(icon: Icon(Icons.list)),
+          ],
+        ),
         title: Text(widget.title),
       ),
-      body: Center(
-          // Center is a layout widget. It takes a single child and positions it
-          // in the middle of the parent.
-          child: SizedBox(
-            height: 200,
-        child: Container(
+      body: TabBarView(
+        children: [
+          Center(
+            // Center is a layout widget. It takes a single child and positions it
+            // in the middle of the parent.
+              child: SizedBox(
+
+                child: Container(
+                    child: Column(
+                      children: [
+                        Spacer(flex: 1,),
+                        SizedBox(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.max,
+                            children: <Widget>[
+                              Container(
+                                  color: Colors.grey,
+                                  child: Row(
+                                    children: [
+                                      Spacer(flex: 2),
+                                      Text('Due date', style: TextStyle(fontSize: 18)),
+                                      Spacer(
+                                        flex: 7,
+                                      ),
+                                      Text("$_dueDate".split(' ')[0],
+                                          style: TextStyle(fontSize: 16)),
+                                      Spacer(flex: 1),
+                                      ElevatedButton(
+                                        onPressed: () => _selectDueDate(context),
+                                        child: Icon(Icons.date_range),
+                                      ),
+                                      Spacer(flex: 2),
+                                    ],
+                                  )),
+                            ],
+                          ),
+                        ),
+                        Spacer(flex: 1,),
+                        SizedBox(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.max,
+                            children: <Widget>[
+                              Row(
+                                children: [
+                                  Spacer(flex: 2),
+                                  Text('Client:', style: TextStyle(fontSize: 20)),
+                                  Spacer(
+                                    flex: 10,
+                                  ),
+                                  SizedBox(
+                                      width: 200,
+                                      height: 40,
+                                      child: TextField(
+                                        onChanged: (val) => {
+                                          _defaultClient = val
+                                        },
+                                        decoration:  InputDecoration(
+                                            border: OutlineInputBorder(),
+                                            hintText: _defaultClient),
+                                      )),
+                                  // Text(_defaultClient, style: TextStyle(fontSize: 18)),
+                                  Spacer(flex: 2),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.max,
+                            children: <Widget>[
+                              Row(
+                                children: [
+                                  Spacer(flex: 2),
+                                  Text('Consultant:',style: TextStyle(fontSize: 20)),
+                                  Spacer(
+                                    flex: 6,
+                                  ),
+                                  SizedBox(
+                                      width: 200,
+                                      height: 40,
+                                      child: TextField(
+                                        onChanged: (val) => {
+                                          _consultant = val
+                                        },
+                                        decoration:  InputDecoration(
+                                            border: OutlineInputBorder(),
+                                            hintText: _consultant),
+                                      )),
+                                  Spacer(flex: 2),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.max,
+                            children: <Widget>[
+                              Row(
+                                children: [
+                                  Spacer(flex: 6),
+                                  Text('Payment terms:', style: TextStyle(fontSize: 20)),
+                                  Spacer(
+                                    flex: 38,
+                                  ),
+                                  SizedBox(
+                                      width: 80,
+                                      height: 40,
+                                      child: TextField(
+                                        onChanged: (val) => {
+                                          _hourlyRate = int.parse(val)
+                                        },
+                                        decoration:  InputDecoration(
+                                            border: OutlineInputBorder(),
+                                            hintText: _hourlyRate.toString()),
+                                      )),
+                                  Spacer(flex: 6),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        Spacer(flex: 1,),
+                        SizedBox(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.max,
+                            children: <Widget>[
+                              Row(
+                                children: [
+                                  Spacer(flex: 2),
+                                  Text('Week 1:',style: TextStyle(fontSize: 20)),
+                                  Spacer(flex: 5),
+                                  Text("$_weekOneEndingDate".split(' ')[0],
+                                      style: TextStyle(fontSize: 16)),
+                                  Spacer(flex: 1),
+                                  ElevatedButton(
+                                    onPressed: () => _selectWeekOneDate(context),
+                                    child: Icon(Icons.date_range),
+                                  ),
+                                  Spacer(
+                                    flex: 1,
+                                  ),
+                                  SizedBox(
+                                      width: 75,
+                                      height: 35,
+                                      child: TextField(
+                                        onChanged: (val) => {
+                                          if (val != '')
+                                            _weekOneHours = int.parse(val).toDouble()
+                                        },
+                                        decoration: const InputDecoration(
+                                            border: OutlineInputBorder(),
+                                            hintText: 'Hours'),
+                                      )),
+                                  Spacer(flex: 2),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.max,
+                            children: <Widget>[
+                              Row(
+                                children: [
+                                  Spacer(flex: 2),
+                                  Text('Week 2:',style: TextStyle(fontSize: 20)),
+                                  Spacer(flex: 5),
+                                  Text("$_weekTwoEndingDate".split(' ')[0],
+                                      style: TextStyle(fontSize: 16)),
+                                  Spacer(flex: 1),
+                                  ElevatedButton(
+                                    onPressed: () => _selectWeekTwoDate(context),
+                                    child: Icon(Icons.date_range),
+                                  ),
+                                  Spacer(
+                                    flex: 1,
+                                  ),
+                                  SizedBox(
+                                      width: 75,
+                                      height: 35,
+                                      child: TextField(
+                                        onChanged: (val) => {
+                                          if (val != '')
+                                            _weekTwoHours = int.parse(val).toDouble()
+                                        },
+                                        decoration: const InputDecoration(
+                                            border: OutlineInputBorder(),
+                                            hintText: 'Hours'),
+                                      )),
+                                  Spacer(flex: 2),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        Spacer(flex: 20,),
+                      ],
+                    )),
+              )),
+          Container(
             child: Column(
-          children: [
-            SizedBox(
-              child: Column(
-                mainAxisSize: MainAxisSize.max,
-                children: <Widget>[
-                  Row(
-                    children: [
-                      Spacer(flex: 2),
-                      Text("$_weekOneEndingDate".split(' ')[0], style: TextStyle(fontSize: 20)),
-                      Spacer(flex: 1),
-                      ElevatedButton(
-                        onPressed: () => _selectWeekOneDate(context),
-                        child: Icon(Icons.date_range),
-                      ),
-                      Spacer(flex: 2,),
-                      SizedBox(
-                          width: 75,
-                          height: 35,
-                          child: TextField(
-                           onChanged: (val) => {
-                      if(val != '')
-                      _weekOneHours = int.parse(val).toDouble()
-                      },
-                            decoration: const InputDecoration(
-                                 border: OutlineInputBorder(), hintText: 'Hours'),
-                          )),
-                      Spacer(flex: 2),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(
-              child: Column(
-                mainAxisSize: MainAxisSize.max,
-                children: <Widget>[
-                  Row(
-                    children: [
-                      Spacer(flex: 2),
-                      Text("$_weekTwoEndingDate".split(' ')[0], style: TextStyle(fontSize: 20)),
-                      Spacer(flex: 1),
-                      ElevatedButton(
-                        onPressed: () => _selectWeekTwoDate(context),
-                        child: Icon(Icons.date_range),
-                      ),
-                      Spacer(flex: 2,),
-                      SizedBox(
-                          width: 75,
-                          height: 35,
-                          child: TextField(
-                            onChanged: (val) => {
-                              if(val != '')
-                              _weekTwoHours = int.parse(val).toDouble()
+              children: <Widget>[
+                // your Content if there
+                Expanded(
+                  child: ListView.builder(
+                      itemCount: _userFriendlyInvoiceList.length,
+                      itemBuilder: (BuildContext context, int index) {
+                        return
+                          GestureDetector(
+                            onTap: () => {
+                            Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => PDFScreen
+                            (key: widget.key, path:
+                            _userFriendlyInvoiceList[index]
+                                .path)),
+                            )
                             },
-                            decoration: const InputDecoration(
-                                border: OutlineInputBorder(), hintText: 'Hours'),
-                          )),
-                      Spacer(flex: 2),
-                    ],
-                  ),
-                ],
-              ),
+                        child: Card(
+                            margin: EdgeInsets.all(8),
+                              child : Padding(
+                                  padding: EdgeInsets.all(8),
+                              child:
+                              Row( children: [
+                                Spacer(flex: 1),
+                              Text(_userFriendlyInvoiceList[index].label
+                                  .toString()),
+                              Spacer(flex: 10),
+                              Icon(Icons.arrow_right_alt_rounded),
+                                Spacer(flex: 1),
+                              ]
+                              )
+                          )));
+                      }),
+                )
+              ],
             ),
-          ],
-        )),
-      )),
+          )
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: generateInvoice,
         tooltip: 'Generate Invoice',
-        child: Icon(Icons.save, size: 30,),
+        child: Icon(
+          Icons.save,
+          size: 30,
+        ),
       ), // This trailing comma makes auto-formatting nicer for build methods.
-    );
+    )));
+  }
+
+  Future<void> _invoiceList() async{
+    try {
+      _mainDirectory = (await getApplicationDocumentsDirectory()).path;
+      final l = Directory("$_mainDirectory").listSync();
+      _fileList = l.where((f) => p
+          .extension(f.path) == '.pdf').toList();
+
+      _fileList.forEach((f) {
+        var p = f.path.toString();
+      var part = p.toString().substring(p.length - 20, p.length);
+       var invoiceObject = new InvoiceObject(path: f.path, label: part);
+     if(!_userFriendlyInvoiceList.contains(invoiceObject))
+       setState(() {
+         _userFriendlyInvoiceList.add(invoiceObject);
+       });
+      });
+
+    } catch(ex){
+
+    }
+  }
+
+
+  Future<void> _selectDueDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+        context: context,
+        initialDate: DateTime.now(),
+        firstDate: DateTime(2015, 8),
+        lastDate: DateTime(2101));
+    if (picked != null && picked != DateTime.parse(_dueDate))
+      setState(() {
+        _dueDate =  formatter.format(picked);
+      });
   }
 
   Future<void> _selectWeekOneDate(BuildContext context) async {
@@ -166,7 +394,7 @@ class _MyHomePageState extends State<MyHomePage> {
         lastDate: DateTime(2101));
     if (picked != null && picked != DateTime.parse(_weekOneEndingDate))
       setState(() {
-        _weekOneEndingDate = picked.toString();
+        _weekOneEndingDate = formatter.format(picked);
       });
   }
 
@@ -178,13 +406,12 @@ class _MyHomePageState extends State<MyHomePage> {
         lastDate: DateTime(2101));
     if (picked != null && picked != DateTime.parse(_weekOneEndingDate))
       setState(() {
-        _weekTwoEndingDate = picked.toString();
+        _weekTwoEndingDate = formatter.format(picked);
       });
   }
 
   Future<void> generateInvoice() async {
-
-    if(!dataIsGood()) return;
+    if (!dataIsGood()) return;
 
     //Create a PDF document.
     final PdfDocument document = PdfDocument();
@@ -210,14 +437,15 @@ class _MyHomePageState extends State<MyHomePage> {
     document.dispose();
     //Save and launch the file.
 
-    _invoiceNumber = DateTime.now().year.toString() + DateTime.now().month.toString() + DateTime.now().day.toString();
+    _invoiceNumber = _dueDate.toString();
 
     final String invoiceString = 'Invoice_' + _invoiceNumber + '.pdf';
     final path = await saveAndLaunchFile(bytes, invoiceString);
 
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => PDFScreen(path: path)),
+      MaterialPageRoute(builder: (context) => PDFScreen(key: widget.key, path:
+          path)),
     );
   }
 
@@ -230,8 +458,14 @@ class _MyHomePageState extends State<MyHomePage> {
 
     //Draw string
     page.graphics.drawString(
-        'RAYSH.IO LLC' + '\r\n' + '1908 Reston Metro Plaza, #1024,'
-        + '\r\n' + 'Reston, Va. 20190' + '\r\n\r\n' + 'INVOICE', PdfStandardFont(PdfFontFamily.helvetica, 18),
+        'RAYSH.IO LLC' +
+            '\r\n' +
+            '1908 Reston Metro Plaza, #1024,' +
+            '\r\n' +
+            'Reston, Va. 20190' +
+            '\r\n\r\n' +
+            'INVOICE',
+        PdfStandardFont(PdfFontFamily.helvetica, 18),
         brush: PdfBrushes.white,
         bounds: Rect.fromLTWH(25, 0, pageSize.width - 115, 90),
         format: PdfStringFormat(lineAlignment: PdfVerticalAlignment.middle));
@@ -240,8 +474,8 @@ class _MyHomePageState extends State<MyHomePage> {
         bounds: Rect.fromLTWH(400, 0, pageSize.width - 400, 90),
         brush: PdfSolidBrush(PdfColor(65, 104, 205)));
 
-    page.graphics.drawString('INVOICE',
-        PdfStandardFont(PdfFontFamily.helvetica, 20),
+    page.graphics.drawString(
+        'INVOICE', PdfStandardFont(PdfFontFamily.helvetica, 20),
         bounds: Rect.fromLTWH(400, 0, pageSize.width - 400, 100),
         brush: PdfBrushes.white,
         format: PdfStringFormat(
@@ -259,20 +493,27 @@ class _MyHomePageState extends State<MyHomePage> {
     //Create data foramt and convert it to text.
     final DateFormat format = DateFormat.yMMMMd('en_US');
 
-    final String invoiceNumber =      'Invoice Number: ' +  _invoiceNumber
-                                + '\r\nInvoice Date: ' + format.format(DateTime.now())
-                                + '\r\nDue Date: ' + _dueDate
-                                + '\r\nPayment Terms: ' + '\$' +  _hourlyRate.toString() + ' /hr'
-        + '\r\nClient Name/location: ' + 'FRB Washington DC'
-        + '\r\nConsultant Name: ' + 'Horatio A Cummings';
+    final String invoiceNumber = 'Invoice Number: ' +
+        _invoiceNumber +
+        '\r\nInvoice Date: ' +
+        format.format(DateTime.now()) +
+        '\r\nDue Date: ' +
+        _dueDate +
+        '\r\nPayment Terms: ' +
+        '\$' +
+        _hourlyRate.toString() +
+        ' /hr' +
+        '\r\nClient Name/location: ' +
+        _defaultClient +
+        '\r\nConsultant Name: ' +
+        _consultant;
 
     final Size contentSize = contentFont.measureString(invoiceNumber);
     // ignore: leading_newlines_in_multiline_strings
-    const String address =
-               'To: Payroll@viva-it.com'
-        + '\r\nViva USA Inc, '
-        + '\r\n3601 Algonquin Road, Ste 425'
-        + '\r\nRolling Meadows, IL. 60008';
+    const String address = 'To: Payroll@viva-it.com' +
+        '\r\nViva USA Inc, ' +
+        '\r\n3601 Algonquin Road, Ste 425' +
+        '\r\nRolling Meadows, IL. 60008';
 
     PdfTextElement(text: invoiceNumber, font: contentFont).draw(
         page: page,
@@ -322,15 +563,18 @@ class _MyHomePageState extends State<MyHomePage> {
   //Draw the invoice footer data.
   void drawFooter(PdfPage page, Size pageSize) {
     final PdfPen linePen =
-    PdfPen(PdfColor(142, 170, 219, 255), dashStyle: PdfDashStyle.custom);
+        PdfPen(PdfColor(142, 170, 219, 255), dashStyle: PdfDashStyle.custom);
     linePen.dashPattern = <double>[3, 3];
     //Draw line
     page.graphics.drawLine(linePen, Offset(0, pageSize.height - 100),
         Offset(pageSize.width, pageSize.height - 100));
 
     const String footerContent =
-    // ignore: leading_newlines_in_multiline_strings
-    'THANKS FOR YOUR BUSINESS!' + '\r\n\r\n' + 'Any questions?' + '\r\r\n peez@raysh.io';
+        // ignore: leading_newlines_in_multiline_strings
+        'THANKS FOR YOUR BUSINESS!' +
+            '\r\n\r\n' +
+            'Any questions?' +
+            '\r\r\n peez@raysh.io';
 
     //Added 30 as a margin for the layout
     page.graphics.drawString(
@@ -357,8 +601,10 @@ class _MyHomePageState extends State<MyHomePage> {
     headerRow.cells[3].value = 'Rate';
     headerRow.cells[4].value = 'Total';
     //Add rows
-    addLineItem(_weekOneEndingDate, 'Application Development', _weekOneHours, _hourlyRate, (_weekOneHours * _hourlyRate), grid);
-    addLineItem(_weekTwoEndingDate, 'Application Development', _weekTwoHours, _hourlyRate, (_weekTwoHours * _hourlyRate), grid);
+    addLineItem(_weekOneEndingDate, 'Application Development', _weekOneHours,
+        _hourlyRate, (_weekOneHours * _hourlyRate), grid);
+    addLineItem(_weekTwoEndingDate, 'Application Development', _weekTwoHours,
+        _hourlyRate, (_weekTwoHours * _hourlyRate), grid);
 
     //Apply the table built-in style
     grid.applyBuiltInStyle(PdfGridBuiltInStyle.listTable4Accent5);
@@ -400,26 +646,26 @@ class _MyHomePageState extends State<MyHomePage> {
     double total = 0;
     for (int i = 0; i < grid.rows.count; i++) {
       final String value =
-      grid.rows[i].cells[grid.columns.count - 1].value as String;
+          grid.rows[i].cells[grid.columns.count - 1].value as String;
       total += double.parse(value);
     }
     return total;
   }
 
-   Future<String> saveAndLaunchFile(
-      List<int> bytes, String fileName) async {
+  Future<String> saveAndLaunchFile(List<int> bytes, String fileName) async {
     String? path;
     if (Platform.isAndroid ||
         Platform.isIOS ||
         Platform.isLinux ||
         Platform.isWindows) {
-      final Directory directory = await getApplicationSupportDirectory();
+      final Directory directory = await getApplicationDocumentsDirectory();
       path = directory.path;
     } else {
-      path = await PathProviderPlatform.instance.getApplicationSupportPath();
+      path = await PathProviderPlatform.instance.getApplicationDocumentsPath();
     }
+
     final File file =
-    File(Platform.isWindows ? '$path\\$fileName' : '$path/$fileName');
+        File(Platform.isWindows ? '$path\\$fileName' : '$path/$fileName');
     await file.writeAsBytes(bytes, flush: true);
     if (Platform.isAndroid || Platform.isIOS) {
       final Map<String, String> argument = <String, String>{
@@ -428,7 +674,7 @@ class _MyHomePageState extends State<MyHomePage> {
       try {
         //ignore:
 
-     //   final Future<Map<String, String>?> result =
+        //   final Future<Map<String, String>?> result =
         _platformCall.invokeMethod('viewPdf', argument);
       } catch (e) {
         throw Exception(e);
@@ -447,9 +693,39 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   bool dataIsGood() {
-    if(_weekTwoHours == null) return false;
-    if(_weekOneHours == null) return false;
-    if(_weekOneEndingDate == null) return false;
-    if(_weekTwoEndingDate == null || DateTime.parse(_weekTwoEndingDate) == null) return false;
+    if (_weekOneHours == 0.0) {
+      final snackBar =
+          SnackBar(content: Text('Hours for week 1 isn\'t selected'));
+      ScaffoldMessenger.of(context).showSnackBar(snackBar);
+      return false;
+    }
+
+    if (_weekTwoHours == 0.0) {
+      final snackBar =
+          SnackBar(content: Text('Hours for week 2 isn\'t selected'));
+      ScaffoldMessenger.of(context).showSnackBar(snackBar);
+      return false;
+    }
+
+    DateTime parsedWeekOneDate = DateTime.parse(_weekOneEndingDate);
+    final parsedWeekTwoDate = DateTime.parse(_weekTwoEndingDate);
+
+    if (parsedWeekOneDate == DateTime.now() ||
+        parsedWeekOneDate.isAfter(DateTime.now()) ||
+        parsedWeekTwoDate == DateTime.now() ||
+        parsedWeekTwoDate.isAfter(DateTime.now()) ||
+        parsedWeekOneDate.isAfter(parsedWeekTwoDate)) {
+      final snackBar = SnackBar(
+          content: Text('Week 2\'s date must come after week 1\'s date'));
+      ScaffoldMessenger.of(context).showSnackBar(snackBar);
+      return false;
+    }
+    if (parsedWeekTwoDate.difference(parsedWeekOneDate).inDays < 7) {
+      final snackBar = SnackBar(
+          content: Text('Weeks one and two must be exactly a week apart'));
+      ScaffoldMessenger.of(context).showSnackBar(snackBar);
+      return false;
+    }
+    return true;
   }
 }
