@@ -4,13 +4,26 @@ import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:rayshio_invoicer/InvObject.dart';
+import 'package:rayshio_invoicer/models/Invoice.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'PDFScreen.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:path/path.dart' as p;
+import 'package:fluttertoast/fluttertoast.dart';
+import 'package:collection/collection.dart';
+import 'helpers/ObjectBox.dart';
 
-void main() {
+
+/// Provides access to the ObjectBox.dart Store throughout the app.
+late ObjectBox objectbox;
+
+Future<void> main() async  {
+
+// This is required so ObjectBox.dart can get the application directory
+  // to store the database in.
+  WidgetsFlutterBinding.ensureInitialized();
+
+  objectbox = await ObjectBox.create();
   runApp(MyApp());
 }
 
@@ -46,333 +59,402 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-
-  _MyHomePageState(){
-    _invoiceList();
-  }
-
-  String _targetFileName = 'Invoice_' + new DateTime.now().millisecond.toString();
-  late String _generatedPdfFilePath;
-
-  String _weekOneEndingDate = DateTime.now().toString();
-  String _weekTwoEndingDate = DateTime.now().toString();
-
-  double _weekOneHours = 0;
-  double _weekTwoHours = 0;
-
+  String _errorText = '';
+  final DateFormat formatter = DateFormat("yyyy-MM-dd");
+  final DateFormat formatter2 = DateFormat.yMMMMd();
+  TabController? _tabController;
+  int? _activeTabIndex = 0;
+  final _invoiceBox = objectbox.store.box<Invoice>();
+  String _weekOneEndingDate = '';
+  String _weekTwoEndingDate = '';
+  double _weekOneHours = 0.0;
+  double _weekTwoHours = 0.0;
   int _hourlyRate = 105;
-
-  double _weekOneTotal = 0.0;
-  double _weekTwoTotal = 0.0;
-
   String _invoiceNumber = '';
-
-  String _dueDate = DateTime.now().toString();
   String _defaultClient = 'FRB Washington DC';
   String _consultant = 'Horatio A Cummings';
-
   late SnackBar snackBar;
-  final DateFormat formatter = DateFormat('yyyy-MM-dd');
-
+  String _dueDate = '';
   String _mainDirectory = '';
-
   List _fileList = [];
+  List<Invoice> _userFriendlyInvoiceList = [];
 
-  List _userFriendlyInvoiceList = [];
+
+  _MyHomePageState() {
+    _weekOneEndingDate = _format(DateTime.now().subtract(const
+    Duration(days: 14)));
+
+    _weekTwoEndingDate = _format(DateTime.now().subtract(const
+    Duration(days: 7)));
+
+    _updateInvoiceList();
+  }
+
+  @override
+  void initState() {
+    _dueDate = formatter.format(DateTime.now().add(const Duration(days: 12)));
+
+    super.initState();
+  }
+
+  void _setActiveTabIndex() {
+    setState(() {
+      _activeTabIndex = _tabController?.index;
+        _updateInvoiceList();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-
     return MaterialApp(
         home: DefaultTabController(
-        length: 2,
-        child:
-      Scaffold(
-      appBar: AppBar(
-        bottom: const TabBar(
-          tabs: [
-            Tab(icon: Icon(Icons.receipt)),
-            Tab(icon: Icon(Icons.list)),
-          ],
-        ),
-        title: Text(widget.title),
-      ),
-      body: TabBarView(
-        children: [
-          Center(
-            // Center is a layout widget. It takes a single child and positions it
-            // in the middle of the parent.
-              child: SizedBox(
+            length: 2,
+            child: Builder(builder: (BuildContext context) {
+              _tabController = DefaultTabController.of(context);
+              _tabController?.addListener(_setActiveTabIndex);
 
-                child: Container(
-                    child: Column(
-                      children: [
-                        Spacer(flex: 1,),
-                        SizedBox(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.max,
-                            children: <Widget>[
-                              Container(
-                                  color: Colors.grey,
-                                  child: Row(
+              return Scaffold(
+                  appBar: AppBar(
+                    bottom: const TabBar(
+                      tabs: [
+                        Tab(icon: Icon(Icons.receipt)),
+                        Tab(icon: Icon(Icons.list)),
+                      ],
+                    ),
+                    title: Text(widget.title),
+                  ),
+                  body: TabBarView(
+                    children: [
+                      Center(
+                          child: SizedBox(
+                        child: Container(
+                            child: Column(
+                          children: [
+                            Spacer(
+                              flex: 1,
+                            ),
+                            SizedBox(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.max,
+                                children: <Widget>[
+                                  Container(
+                                      color: Colors.grey,
+                                      child: Row(
+                                        children: [
+                                          Spacer(flex: 2),
+                                          Text('Due date',
+                                              style: TextStyle(fontSize: 18)),
+                                          Spacer(
+                                            flex: 7,
+                                          ),
+                                          Text("$_dueDate".split(' ')[0],
+                                              style: TextStyle(fontSize: 16)),
+                                          Spacer(flex: 1),
+                                          ElevatedButton(
+                                            onPressed: () =>
+                                                _selectDueDate(context),
+                                            child: Icon(Icons.date_range),
+                                          ),
+                                          Spacer(flex: 2),
+                                        ],
+                                      )),
+                                ],
+                              ),
+                            ),
+                            Spacer(
+                              flex: 1,
+                            ),
+                            SizedBox(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.max,
+                                children: <Widget>[
+                                  Row(
                                     children: [
                                       Spacer(flex: 2),
-                                      Text('Due date', style: TextStyle(fontSize: 18)),
+                                      Text('Client:',
+                                          style: TextStyle(fontSize: 20)),
                                       Spacer(
-                                        flex: 7,
+                                        flex: 10,
                                       ),
-                                      Text("$_dueDate".split(' ')[0],
+                                      SizedBox(
+                                          width: 200,
+                                          height: 40,
+                                          child: TextField(
+                                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                              keyboardType: TextInputType.text,
+                                            onChanged: (val) =>
+                                                {_defaultClient = val},
+                                            decoration: InputDecoration(
+                                                border: OutlineInputBorder(),
+                                                hintText: _defaultClient),
+                                          )),
+                                      // Text(_defaultClient, style: TextStyle(fontSize: 18)),
+                                      Spacer(flex: 2),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            SizedBox(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.max,
+                                children: <Widget>[
+                                  Row(
+                                    children: [
+                                      Spacer(flex: 2),
+                                      Text('Consultant:',
+                                          style: TextStyle(fontSize: 20)),
+                                      Spacer(
+                                        flex: 6,
+                                      ),
+                                      SizedBox(
+                                          width: 200,
+                                          height: 40,
+                                          child: TextField(
+                                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                            keyboardType: TextInputType.text,
+                                            onChanged: (val) =>
+                                                {_consultant = val},
+                                            decoration: InputDecoration(
+                                                border: OutlineInputBorder(),
+                                                hintText: _consultant),
+                                          )),
+                                      Spacer(flex: 2),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            SizedBox(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.max,
+                                children: <Widget>[
+                                  Row(
+                                    children: [
+                                      Spacer(flex: 6),
+                                      Text('Payment terms:',
+                                          style: TextStyle(fontSize: 20)),
+                                      Spacer(
+                                        flex: 38,
+                                      ),
+                                      SizedBox(
+                                          width: 80,
+                                          height: 40,
+                                          child: TextField(
+                                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                            keyboardType: TextInputType.number,
+                                            onChanged: (val) =>
+                                                {_hourlyRate = int.parse(val)},
+                                            decoration: InputDecoration(
+                                                border: OutlineInputBorder(),
+                                                hintText:
+                                                    _hourlyRate.toString()),
+                                          )),
+                                      Spacer(flex: 6),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Spacer(
+                              flex: 1,
+                            ),
+                            SizedBox(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.max,
+                                children: <Widget>[
+                                  Row(
+                                    children: [
+                                      Spacer(flex: 2),
+                                      Text('Week 1:',
+                                          style: TextStyle(fontSize: 20)),
+                                      Spacer(flex: 5),
+                                      Text("$_weekOneEndingDate".split(' ')[0],
                                           style: TextStyle(fontSize: 16)),
                                       Spacer(flex: 1),
                                       ElevatedButton(
-                                        onPressed: () => _selectDueDate(context),
+                                        onPressed: () =>
+                                            _selectWeekOneDate(context),
                                         child: Icon(Icons.date_range),
                                       ),
+                                      Spacer(
+                                        flex: 1,
+                                      ),
+                                      SizedBox(
+                                          width: 75,
+                                          height: 35,
+                                          child: TextField(
+                                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                            keyboardType: TextInputType.number,
+                                            onChanged: (val) => {
+                                              setState((){
+                                                  _weekOneHours =
+                                                  val == ''
+                                                      ? 0.0
+                                                      : int.parse(val)
+                                                      .toDouble();
+                                              })
+                                            },
+                                            decoration: const InputDecoration(
+                                                border: OutlineInputBorder(),
+                                                hintText: 'Hours'),
+                                          )),
                                       Spacer(flex: 2),
                                     ],
-                                  )),
-                            ],
-                          ),
-                        ),
-                        Spacer(flex: 1,),
-                        SizedBox(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.max,
-                            children: <Widget>[
-                              Row(
-                                children: [
-                                  Spacer(flex: 2),
-                                  Text('Client:', style: TextStyle(fontSize: 20)),
-                                  Spacer(
-                                    flex: 10,
                                   ),
-                                  SizedBox(
-                                      width: 200,
-                                      height: 40,
-                                      child: TextField(
-                                        onChanged: (val) => {
-                                          _defaultClient = val
-                                        },
-                                        decoration:  InputDecoration(
-                                            border: OutlineInputBorder(),
-                                            hintText: _defaultClient),
-                                      )),
-                                  // Text(_defaultClient, style: TextStyle(fontSize: 18)),
-                                  Spacer(flex: 2),
                                 ],
                               ),
-                            ],
-                          ),
-                        ),
-                        SizedBox(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.max,
-                            children: <Widget>[
-                              Row(
-                                children: [
-                                  Spacer(flex: 2),
-                                  Text('Consultant:',style: TextStyle(fontSize: 20)),
-                                  Spacer(
-                                    flex: 6,
+                            ),
+                            SizedBox(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.max,
+                                children: <Widget>[
+                                  Row(
+                                    children: [
+                                      Spacer(flex: 2),
+                                      Text('Week 2:',
+                                          style: TextStyle(fontSize: 20)),
+                                      Spacer(flex: 5),
+                                      Text("$_weekTwoEndingDate".split(' ')[0],
+                                          style: TextStyle(fontSize: 16)),
+                                      Spacer(flex: 1),
+                                      ElevatedButton(
+                                        onPressed: () =>
+                                            _selectWeekTwoDate(context),
+                                        child: Icon(Icons.date_range),
+                                      ),
+                                      Spacer(
+                                        flex: 1,
+                                      ),
+                                      SizedBox(
+                                          width: 75,
+                                          height: 35,
+                                          child: TextField(
+                                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                            keyboardType: TextInputType.number,
+                                            onChanged: (val) => {
+                                              setState((){
+                                                _weekTwoHours =
+                                                val == ''
+                                                    ? 0.0
+                                                    : int.parse(val).toDouble();
+                                                })
+                                            },
+                                            decoration: const InputDecoration(
+                                                border: OutlineInputBorder(),
+                                                hintText: 'Hours'),
+                                          )),
+                                      Spacer(flex: 2),
+                                    ],
                                   ),
-                                  SizedBox(
-                                      width: 200,
-                                      height: 40,
-                                      child: TextField(
-                                        onChanged: (val) => {
-                                          _consultant = val
-                                        },
-                                        decoration:  InputDecoration(
-                                            border: OutlineInputBorder(),
-                                            hintText: _consultant),
-                                      )),
-                                  Spacer(flex: 2),
                                 ],
                               ),
-                            ],
-                          ),
-                        ),
-                        SizedBox(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.max,
-                            children: <Widget>[
-                              Row(
-                                children: [
-                                  Spacer(flex: 6),
-                                  Text('Payment terms:', style: TextStyle(fontSize: 20)),
-                                  Spacer(
-                                    flex: 38,
-                                  ),
-                                  SizedBox(
-                                      width: 80,
-                                      height: 40,
-                                      child: TextField(
-                                        onChanged: (val) => {
-                                          _hourlyRate = int.parse(val)
-                                        },
-                                        decoration:  InputDecoration(
-                                            border: OutlineInputBorder(),
-                                            hintText: _hourlyRate.toString()),
-                                      )),
-                                  Spacer(flex: 6),
-                                ],
+                            ),
+                            Spacer(
+                              flex: 20,
+                            ),
+                          ],
+                        )),
+                      )),
+                      Container(
+                        child: Column(
+                          children: <Widget>[
+                            // your Content if there
+                            Expanded(
+                                child: GridView.builder(
+                              itemCount:_userFriendlyInvoiceList.length,
+                              itemBuilder: (context, index) => GestureDetector(
+                                  onTap: () => {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                              builder: (context) => PDFScreen(
+                                                  key: widget.key,
+                                                  path:
+                                                      _userFriendlyInvoiceList[
+                                                              index]
+                                                          .path, label: _userFriendlyInvoiceList[
+                                              index]
+                                                  .label, invoiceBox:
+                                              _invoiceBox, invoiceId:
+                                              _userFriendlyInvoiceList[
+                                              index].id,)),
+                                        )
+                                      },
+                                  child: Card(
+                                    borderOnForeground: true,
+                                      margin: EdgeInsets.all(8),
+                                      color: Colors.grey[200],
+                                      shape: RoundedRectangleBorder(
+                                        side: BorderSide(color:
+                                        _userFriendlyInvoiceList[index].paid
+                                            ? Colors.green
+                                            :  Colors.red,
+                                            width: 1),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Padding(
+                                          padding: EdgeInsets.all(8),
+                                          child: Column(children: [
+                                            Spacer(flex: 1),
+                                            Text(_userFriendlyInvoiceList[index].creationDate),
+                                            Spacer(flex: 1),
+                                            Icon(
+                                              Icons.picture_as_pdf_outlined,
+                                              size: 100,
+                                            ),
+                                            Spacer(flex: 2),
+                                            Text(_userFriendlyInvoiceList[index]
+                                                .label
+                                                .toString()),
+                                            Spacer(flex: 10),
+                                          ])))),
+                              gridDelegate:
+                                  SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
                               ),
-                            ],
-                          ),
+                            ))
+                          ],
                         ),
-                        Spacer(flex: 1,),
-                        SizedBox(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.max,
-                            children: <Widget>[
-                              Row(
-                                children: [
-                                  Spacer(flex: 2),
-                                  Text('Week 1:',style: TextStyle(fontSize: 20)),
-                                  Spacer(flex: 5),
-                                  Text("$_weekOneEndingDate".split(' ')[0],
-                                      style: TextStyle(fontSize: 16)),
-                                  Spacer(flex: 1),
-                                  ElevatedButton(
-                                    onPressed: () => _selectWeekOneDate(context),
-                                    child: Icon(Icons.date_range),
-                                  ),
-                                  Spacer(
-                                    flex: 1,
-                                  ),
-                                  SizedBox(
-                                      width: 75,
-                                      height: 35,
-                                      child: TextField(
-                                        onChanged: (val) => {
-                                          if (val != '')
-                                            _weekOneHours = int.parse(val).toDouble()
-                                        },
-                                        decoration: const InputDecoration(
-                                            border: OutlineInputBorder(),
-                                            hintText: 'Hours'),
-                                      )),
-                                  Spacer(flex: 2),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        SizedBox(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.max,
-                            children: <Widget>[
-                              Row(
-                                children: [
-                                  Spacer(flex: 2),
-                                  Text('Week 2:',style: TextStyle(fontSize: 20)),
-                                  Spacer(flex: 5),
-                                  Text("$_weekTwoEndingDate".split(' ')[0],
-                                      style: TextStyle(fontSize: 16)),
-                                  Spacer(flex: 1),
-                                  ElevatedButton(
-                                    onPressed: () => _selectWeekTwoDate(context),
-                                    child: Icon(Icons.date_range),
-                                  ),
-                                  Spacer(
-                                    flex: 1,
-                                  ),
-                                  SizedBox(
-                                      width: 75,
-                                      height: 35,
-                                      child: TextField(
-                                        onChanged: (val) => {
-                                          if (val != '')
-                                            _weekTwoHours = int.parse(val).toDouble()
-                                        },
-                                        decoration: const InputDecoration(
-                                            border: OutlineInputBorder(),
-                                            hintText: 'Hours'),
-                                      )),
-                                  Spacer(flex: 2),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        Spacer(flex: 20,),
-                      ],
-                    )),
-              )),
-          Container(
-            child: Column(
-              children: <Widget>[
-                // your Content if there
-                Expanded(
-                  child: ListView.builder(
-                      itemCount: _userFriendlyInvoiceList.length,
-                      itemBuilder: (BuildContext context, int index) {
-                        return
-                          GestureDetector(
-                            onTap: () => {
-                            Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => PDFScreen
-                            (key: widget.key, path:
-                            _userFriendlyInvoiceList[index]
-                                .path)),
-                            )
-                            },
-                        child: Card(
-                            margin: EdgeInsets.all(8),
-                              child : Padding(
-                                  padding: EdgeInsets.all(8),
-                              child:
-                              Row( children: [
-                                Spacer(flex: 1),
-                              Text(_userFriendlyInvoiceList[index].label
-                                  .toString()),
-                              Spacer(flex: 10),
-                              Icon(Icons.arrow_right_alt_rounded),
-                                Spacer(flex: 1),
-                              ]
-                              )
-                          )));
-                      }),
-                )
-              ],
-            ),
-          )
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: generateInvoice,
-        tooltip: 'Generate Invoice',
-        child: Icon(
-          Icons.save,
-          size: 30,
-        ),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
-    )));
+                      )
+                    ],
+                  ),
+              floatingActionButton: new Visibility(
+                  visible: _activeTabIndex2,
+                  child: FloatingActionButton(
+                    onPressed: dataIsGood,
+                    tooltip: 'Generate Invoice',
+                    child: Icon(
+                      Icons.save,
+                      size: 30,
+                    ),
+                  )),
+              );
+            }),
+            initialIndex: 0));
   }
 
-  Future<void> _invoiceList() async{
+  get _activeTabIndex2 {
+    return _activeTabIndex != 1;
+  }
+
+  Future<void> _updateInvoiceList() async {
     try {
-      _mainDirectory = (await getApplicationDocumentsDirectory()).path;
-      final l = Directory("$_mainDirectory").listSync();
-      _fileList = l.where((f) => p
-          .extension(f.path) == '.pdf').toList();
 
-      _fileList.forEach((f) {
-        var p = f.path.toString();
-      var part = p.toString().substring(p.length - 20, p.length);
-       var invoiceObject = new InvoiceObject(path: f.path, label: part);
-     if(!_userFriendlyInvoiceList.contains(invoiceObject))
-       setState(() {
-         _userFriendlyInvoiceList.add(invoiceObject);
-       });
-      });
+        _invoiceBox.getAll().forEach((f) {
+          var found = _userFriendlyInvoiceList.firstWhereOrNull((element) =>
+          element.id == f.id);
+          if (found == null) {
+            _userFriendlyInvoiceList.add(f);
+          } else {
+            // replace the record
+            _userFriendlyInvoiceList.remove(found);
+            _userFriendlyInvoiceList.add(f);
+          }
+        });
 
-    } catch(ex){
-
-    }
+    } catch (ex) {}
   }
-
 
   Future<void> _selectDueDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
@@ -382,7 +464,7 @@ class _MyHomePageState extends State<MyHomePage> {
         lastDate: DateTime(2101));
     if (picked != null && picked != DateTime.parse(_dueDate))
       setState(() {
-        _dueDate =  formatter.format(picked);
+        _dueDate = formatter.format(picked);
       });
   }
 
@@ -411,6 +493,8 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> generateInvoice() async {
+
+    // run validation
     if (!dataIsGood()) return;
 
     //Create a PDF document.
@@ -440,12 +524,27 @@ class _MyHomePageState extends State<MyHomePage> {
     _invoiceNumber = _dueDate.toString();
 
     final String invoiceString = 'Invoice_' + _invoiceNumber + '.pdf';
-    final path = await saveAndLaunchFile(bytes, invoiceString);
+    final path = await savePdfFile(bytes, invoiceString);
 
+    var label = path.toString().substring(path.length - 22, path.length);
+    var invoiceRecord = Invoice(path: path, label: label, dueDate: _dueDate,
+        creationDate: formatter.format(DateTime.now()));
+
+    // add invoice to db
+     int id = _invoiceBox.put(invoiceRecord);
+
+    // recreate the invoice list
+    _updateInvoiceList();
+
+    // close the pop up
+    Navigator.of(context).pop();
+
+    // navigate to the completed PDF
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => PDFScreen(key: widget.key, path:
-          path)),
+      MaterialPageRoute(
+          builder: (context) => PDFScreen(key: widget.key, path: path, label:
+          label, invoiceBox: _invoiceBox, invoiceId: id)),
     );
   }
 
@@ -631,13 +730,12 @@ class _MyHomePageState extends State<MyHomePage> {
   static final MethodChannel _platformCall = MethodChannel('launchFile');
 
   //Create and row for the grid.
-  void addLineItem(String productId, String productName, double price,
-      int quantity, double total, PdfGrid grid) {
+  void addLineItem(String weekEnding, String workType, double HoursWorked, int rate, double total, PdfGrid grid) {
     final PdfGridRow row = grid.rows.add();
-    row.cells[0].value = productId;
-    row.cells[1].value = productName;
-    row.cells[2].value = price.toString();
-    row.cells[3].value = quantity.toString();
+    row.cells[0].value = weekEnding;
+    row.cells[1].value = workType;
+    row.cells[2].value = HoursWorked.toString();
+    row.cells[3].value = rate.toString();
     row.cells[4].value = total.toString();
   }
 
@@ -652,7 +750,7 @@ class _MyHomePageState extends State<MyHomePage> {
     return total;
   }
 
-  Future<String> saveAndLaunchFile(List<int> bytes, String fileName) async {
+  Future<String> savePdfFile(List<int> bytes, String fileName) async {
     String? path;
     if (Platform.isAndroid ||
         Platform.isIOS ||
@@ -692,18 +790,81 @@ class _MyHomePageState extends State<MyHomePage> {
     return file.path;
   }
 
+  Future<void> _showMyDialog() async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false, // user must tap button!
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Create Invoice?', style: TextStyle
+            (fontSize: 24) ),
+          content: SingleChildScrollView(
+            child: Column(
+              children: <Widget>[
+                Row(children: [Text('Week one: ' + _weekOneHours.toString() +
+                    ' hrs ' + ': \$' + (_weekOneHours* _hourlyRate).toString
+                  ())]),
+                Row(children: [Text('Week two: ' + _weekTwoHours.toString() +
+                    ' hrs'+ ': \$' + (_weekTwoHours* _hourlyRate).toString
+                  ()),],),
+                Row(children: [Text('Total' +  ': \$' + ((_weekOneHours*
+                    _hourlyRate) +
+                    (_weekTwoHours* _hourlyRate)).toString(),
+                )]),
+                Row(children: [Text('Due: ' + formatter2.format(DateTime
+                    .parse(_dueDate)),
+                )]),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: Text('Confirm'),
+              onPressed: () {
+                print('Confirmed');
+                Navigator.of(context).pop();
+                generateInvoice();
+              },
+            ),
+            TextButton(
+              child: Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   bool dataIsGood() {
     if (_weekOneHours == 0.0) {
-      final snackBar =
-          SnackBar(content: Text('Hours for week 1 isn\'t selected'));
-      ScaffoldMessenger.of(context).showSnackBar(snackBar);
+      // final snackBar =
+      //     SnackBar(content: Text('Hours for week 1 isn\'t selected'));
+      // ScaffoldMessenger.of(context).showSnackBar(snackBar);
+      Fluttertoast.showToast(
+          msg: "Hours for week 1 isn\'t selected",
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.CENTER,
+          timeInSecForIosWeb: 1,
+          backgroundColor: Colors.grey,
+          textColor: Colors.grey,
+          fontSize: 16.0
+      );
       return false;
     }
 
     if (_weekTwoHours == 0.0) {
-      final snackBar =
-          SnackBar(content: Text('Hours for week 2 isn\'t selected'));
-      ScaffoldMessenger.of(context).showSnackBar(snackBar);
+      Fluttertoast.showToast(
+          msg: "Hours for week 2 isn\'t selected",
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.CENTER,
+          timeInSecForIosWeb: 1,
+          backgroundColor: Colors.grey,
+          textColor: Colors.grey,
+          fontSize: 16.0
+      );
       return false;
     }
 
@@ -711,21 +872,41 @@ class _MyHomePageState extends State<MyHomePage> {
     final parsedWeekTwoDate = DateTime.parse(_weekTwoEndingDate);
 
     if (parsedWeekOneDate == DateTime.now() ||
-        parsedWeekOneDate.isAfter(DateTime.now()) ||
+        // parsedWeekOneDate.isAfter(DateTime.now()) ||
         parsedWeekTwoDate == DateTime.now() ||
-        parsedWeekTwoDate.isAfter(DateTime.now()) ||
+        //  parsedWeekTwoDate.isAfter(DateTime.now()) ||
         parsedWeekOneDate.isAfter(parsedWeekTwoDate)) {
-      final snackBar = SnackBar(
-          content: Text('Week 2\'s date must come after week 1\'s date'));
-      ScaffoldMessenger.of(context).showSnackBar(snackBar);
+      Fluttertoast.showToast(
+          msg: "Week 2\'s date must come after week 1\'s date",
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.CENTER,
+          timeInSecForIosWeb: 1,
+          backgroundColor: Colors.grey,
+          textColor: Colors.grey,
+          fontSize: 16.0
+      );
       return false;
     }
-    if (parsedWeekTwoDate.difference(parsedWeekOneDate).inDays < 7) {
-      final snackBar = SnackBar(
-          content: Text('Weeks one and two must be exactly a week apart'));
-      ScaffoldMessenger.of(context).showSnackBar(snackBar);
+    var days = parsedWeekTwoDate.difference(parsedWeekOneDate).inDays;
+    if (days < 7) {
+      Fluttertoast.showToast(
+          msg: "Weeks one and two must be exactly a week apart",
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.CENTER,
+          timeInSecForIosWeb: 1,
+          backgroundColor: Colors.grey,
+          textColor: Colors.grey,
+          fontSize: 16.0
+      );
       return false;
     }
+
+    // all is good so show the confirmation dialog
+    _showMyDialog();
     return true;
+  }
+
+   String _format(DateTime d) {
+    return formatter.format(d.toUtc());
   }
 }
