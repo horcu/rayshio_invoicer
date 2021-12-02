@@ -19,14 +19,14 @@ import 'objectbox.g.dart';
 class PDFScreen extends StatefulWidget {
   final String path;
   String label;
-  Box invoiceBox;
   int invoiceId;
+  Box invoiceBox;
   late Invoice _currentInvoice;
 
   PDFScreen({required Key? key, required this.path, required this.invoiceId,
-  required this.label,
-    required this.invoiceBox}) :
+  required this.label, required this.invoiceBox}) :
         super(key: key) {
+
 
     // get the invoice from db
     _currentInvoice = invoiceBox.get(invoiceId);
@@ -39,6 +39,7 @@ class _PDFScreenState extends State<PDFScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+
     return Scaffold(
         appBar: AppBar(
           actions: <Widget>[
@@ -77,7 +78,7 @@ class _PDFScreenState extends State<PDFScreen> with WidgetsBindingObserver {
           child:  new Visibility(
               visible: true,
               child: FloatingActionButton(
-                onPressed: deleteInvoice,
+                onPressed: _showConfirmationDialog,
                 tooltip: 'Delete Invoice',
                 child: Icon(
                   Icons.delete,
@@ -109,7 +110,44 @@ class _PDFScreenState extends State<PDFScreen> with WidgetsBindingObserver {
 
   }
 
-  Future<String> get _localPath async {
+  Future<void> _showConfirmationDialog() async {
+
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false, // user must tap button!
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Delete Invoice?', style: TextStyle
+            (fontSize: 24) ),
+          content: SingleChildScrollView(
+            child: Column(
+              children: <Widget>[
+                Row(children: [Text('Are you sure ?')]),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: Text('Confirm'),
+              onPressed: () {
+                print('Confirmed');
+                Navigator.of(context).pop();
+                deleteInvoice();
+              },
+            ),
+            TextButton(
+              child: Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+    Future<String> get _localPath async {
     final directory = await getApplicationDocumentsDirectory();
     return directory.path;
   }
@@ -124,6 +162,7 @@ class _PDFScreenState extends State<PDFScreen> with WidgetsBindingObserver {
       final file = await _localFile;
       setState(() async {
         await file.delete();
+        widget.invoiceBox.remove(widget.invoiceId);
 
         Navigator.push(
           context,
@@ -205,6 +244,7 @@ class _PDFScreenState extends State<PDFScreen> with WidgetsBindingObserver {
 
     final File file =
     File(Platform.isWindows ? '$path\\$fileName' : '$path/$fileName');
+    File(Platform.isWindows ? '$path\\$fileName' : '$path/$fileName');
     await file.writeAsBytes(bytes, flush: true);
     if (Platform.isAndroid || Platform.isIOS) {
       final Map<String, String> argument = <String, String>{
@@ -233,6 +273,6 @@ class _PDFScreenState extends State<PDFScreen> with WidgetsBindingObserver {
 
   void updatePaymentStatusInDb() {
     widget._currentInvoice.paid = true;
-    widget.invoiceBox.put(widget._currentInvoice);
+    widget.invoiceBox..put(widget._currentInvoice);
   }
 }
