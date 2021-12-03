@@ -16,6 +16,11 @@ import 'package:awesome_notifications/awesome_notifications.dart';
 
 import 'helpers/notifications.dart';
 import 'helpers/utilities.dart';
+import 'models/Association.dart';
+import 'models/Client.dart';
+import 'models/Consultant.dart';
+import 'models/PayRate.dart';
+import 'objectbox.g.dart';
 
 /// Provides access to the ObjectBox.dart Store throughout the app.
 late ObjectBox objectbox;
@@ -27,14 +32,14 @@ Future<void> main() async {
       NotificationChannel(
         channelKey: 'basic_channel',
         channelName: 'Basic Notifications',
-        defaultColor: Colors.purple,
+        defaultColor: Colors.blueGrey,
         importance: NotificationImportance.High,
         channelShowBadge: true,
       ),
       NotificationChannel(
         channelKey: 'scheduled_channel',
         channelName: 'Scheduled Notifications',
-        defaultColor: Colors.purple,
+        defaultColor: Colors.blueGrey,
         locked: true,
         //icon: "resource://drawable/ic_launcher.png",
         importance: NotificationImportance.High,
@@ -60,15 +65,6 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Raysh.io LLC Invoice Generator',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // Try running your application with "flutter run". You'll see the
-        // application has a blue toolbar. Then, without quitting the app, try
-        // changing the primarySwatch below to Colors.green and then invoke
-        // "hot reload" (press "r" in the console where you ran "flutter run",
-        // or simply save your changes to "hot reload" in a Flutter IDE).
-        // Notice that the counter didn't reset back to zero; the application
-        // is not restarted.
         primarySwatch: Colors.blue,
       ),
       home: MyHomePage(title: 'Raysh.io LLC'),
@@ -92,19 +88,35 @@ class _MyHomePageState extends State<MyHomePage> {
   TabController? _tabController;
   int? _activeTabIndex = 0;
   final _invoiceBox = objectbox.store.box<Invoice>();
+  final _ratesBox = objectbox.store.box<PayRate>();
+  final _clientsBox = objectbox.store.box<Client>();
+  final _consultantsBox = objectbox.store.box<Consultant>();
+  final _associationBox = objectbox.store.box<Association>();
   String _weekOneEndingDate = '';
   String _weekTwoEndingDate = '';
   double _weekOneHours = 0.0;
   double _weekTwoHours = 0.0;
   int _hourlyRate = 105;
   String _invoiceNumber = '';
-  String _defaultClient = 'FRB Washington DC';
-  String _consultant = 'Horatio A Cummings';
+  late String _selectedHourlyRate;
+  late String _selectedClient;
+  late String _selectedConsultant;
+  late List<String> _clients;
+  late List<String> _associations;
+
+  late List<String> _consultants;
+
+  late List<String> _hourlyRates;
+
   late SnackBar snackBar;
   String _dueDate = '';
-  String _mainDirectory = '';
-  List _fileList = [];
+
   List<Invoice> _userFriendlyInvoiceList = [];
+
+  var sub1;
+  var sub2;
+  var sub3;
+  var sub4;
 
   _MyHomePageState() {
     _weekOneEndingDate =
@@ -115,6 +127,44 @@ class _MyHomePageState extends State<MyHomePage> {
 
     _updateInvoiceList();
     _activeTabIndex = 0;
+
+    _associations = <String>[];
+    _associations = getAssociations();
+
+    _consultants = <String>[];
+    var cs = _getConsultants();
+    cs.forEach((c) {
+      _consultants.add(c.name);
+    });
+    _consultants.add('John Doe');
+    //_consultants.add('Jessica R Cummings');
+    _selectedConsultant = _consultants[0];
+
+    _clients = <String>[];
+    var cl = _getClients();
+    cl.forEach((c) {
+      _clients.add(c.name);
+    });
+    _clients.add('Company 1');
+    //_clients.add('Google');
+    _selectedClient = _clients[0];
+
+    _hourlyRates = <String>[];
+    var rt = _getHourlyRates();
+    rt.forEach((c) {
+      _hourlyRates.add(c.rate);
+    });
+    //_hourlyRates.add('105');
+    //_hourlyRates.add('100');
+    //_hourlyRates.add('95');
+    _hourlyRates.add('5');
+
+    _selectedHourlyRate = _hourlyRates[0];
+
+    watchClients();
+    watchPayRates();
+    watchConsultants();
+    watchAssociations();
   }
 
   @override
@@ -196,17 +246,25 @@ class _MyHomePageState extends State<MyHomePage> {
               _tabController?.addListener(_setActiveTabIndex);
 
               return Scaffold(
-                backgroundColor: const Color(0xFFE9EAEC),
+                backgroundColor: const Color(0xFFE3E7F1),
                 appBar: AppBar(
-                  bottom: const TabBar(
-                    tabs: [
-                      Tab(icon: Icon(Icons.receipt)),
-                      Tab(icon: Icon(Icons.list)),
-                      Tab(icon: Icon(Icons.alarm_on_rounded)),
-                    ],
-                  ),
+                  //  bottom:
                   title: Text(widget.title),
                 ),
+                bottomNavigationBar: Container(
+                    color: Colors.blue,
+                    child: const TabBar(
+                      labelColor: Colors.white,
+                      unselectedLabelColor: const Color(0xFFE3E7F1),
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      indicatorPadding: EdgeInsets.all(5.0),
+                      indicatorColor: const Color(0xFFE3E7F1),
+                      tabs: [
+                        Tab(icon: Icon(Icons.receipt)),
+                        Tab(icon: Icon(Icons.list)),
+                        Tab(icon: Icon(Icons.settings)),
+                      ],
+                    )),
                 body: TabBarView(
                   children: [
                     SizedBox(
@@ -222,14 +280,14 @@ class _MyHomePageState extends State<MyHomePage> {
                               mainAxisSize: MainAxisSize.max,
                               children: <Widget>[
                                 Container(
-                                    color: const Color(0xFFE3E7F1),
+                                    color: const Color(0xFFFFFFFF),
                                     child: Row(
                                       children: [
                                         Spacer(flex: 2),
                                         Text('Due date',
                                             style: TextStyle(fontSize: 18)),
                                         Spacer(
-                                          flex: 7,
+                                          flex: 13,
                                         ),
                                         Text("$_dueDate".split(' ')[0],
                                             style: TextStyle(fontSize: 16)),
@@ -255,27 +313,25 @@ class _MyHomePageState extends State<MyHomePage> {
                                 Row(
                                   children: [
                                     Spacer(flex: 2),
-                                    // Text('Client:',
-                                    //     style: TextStyle(fontSize: 20)),
-                                    // Spacer(
-                                    //   flex: 10,
-                                    //   ),
                                     SizedBox(
-                                        width: 400,
-                                        height: 40,
-                                        child: TextField(
-                                          inputFormatters: [
-                                            FilteringTextInputFormatter
-                                                .digitsOnly
-                                          ],
-                                          keyboardType: TextInputType.text,
-                                          onChanged: (val) =>
-                                              {_defaultClient = val},
-                                          decoration: InputDecoration(
-                                              border: OutlineInputBorder(),
-                                              hintText: _defaultClient),
+                                        width: 380,
+                                        height: 50,
+                                        child: DropdownButton<String>(
+                                          isExpanded: true,
+                                          value: _selectedClient,
+                                          hint: Text('--Select Client--'),
+                                          items: _clients.map((String c) {
+                                            return DropdownMenuItem(
+                                              child: new Text(c),
+                                              value: c,
+                                            );
+                                          }).toList(),
+                                          onChanged: (val) => {
+                                            setState(() {
+                                              _selectedClient = val!;
+                                            })
+                                          },
                                         )),
-                                    // Text(_defaultClient, style: TextStyle(fontSize: 18)),
                                     Spacer(flex: 2),
                                   ],
                                 ),
@@ -298,19 +354,23 @@ class _MyHomePageState extends State<MyHomePage> {
                                     //   flex: 6,
                                     // ),
                                     SizedBox(
-                                        width: 400,
-                                        height: 40,
-                                        child: TextField(
-                                          inputFormatters: [
-                                            FilteringTextInputFormatter
-                                                .digitsOnly
-                                          ],
-                                          keyboardType: TextInputType.text,
-                                          onChanged: (val) =>
-                                              {_consultant = val},
-                                          decoration: InputDecoration(
-                                              border: OutlineInputBorder(),
-                                              hintText: _consultant),
+                                        width: 380,
+                                        height: 50,
+                                        child: DropdownButton<String>(
+                                          isExpanded: true,
+                                          value: _selectedConsultant,
+                                          hint: Text('--Select Consultant--'),
+                                          items: _consultants.map((String c) {
+                                            return DropdownMenuItem(
+                                              child: new Text(c),
+                                              value: c,
+                                            );
+                                          }).toList(),
+                                          onChanged: (val) => {
+                                            setState(() {
+                                              _selectedConsultant = val!;
+                                            })
+                                          },
                                         )),
                                     Spacer(flex: 2),
                                   ],
@@ -328,28 +388,24 @@ class _MyHomePageState extends State<MyHomePage> {
                                 Row(
                                   children: [
                                     Spacer(flex: 1),
-                                    // Text('Payment terms:',
-                                    //     style: TextStyle(fontSize: 20)),
-                                    // Spacer(
-                                    //   flex: 38,
-                                    // ),
                                     SizedBox(
-                                        width: 400,
-                                        height: 40,
-                                        child: TextField(
-                                          inputFormatters: [
-                                            FilteringTextInputFormatter
-                                                .digitsOnly
-                                          ],
-                                          keyboardType: TextInputType.number,
-                                          onChanged: (val) =>
-                                              {_hourlyRate = int.parse(val)},
-                                          decoration: InputDecoration(
-                                              border: OutlineInputBorder(),
-                                              hintText: 'Payment terms:'
-                                                      ' \$' +
-                                                  _hourlyRate.toString() +
-                                                  '/hr'),
+                                        width: 380,
+                                        height: 50,
+                                        child: DropdownButton<String>(
+                                          isExpanded: true,
+                                          value: _selectedHourlyRate,
+                                          hint: Text('--Select Rate--'),
+                                          items: _hourlyRates.map((String c) {
+                                            return DropdownMenuItem(
+                                              child: new Text(c),
+                                              value: c,
+                                            );
+                                          }).toList(),
+                                          onChanged: (val) => {
+                                            setState(() {
+                                              _selectedHourlyRate = val!;
+                                            })
+                                          },
                                         )),
                                     Spacer(flex: 1),
                                   ],
@@ -362,7 +418,7 @@ class _MyHomePageState extends State<MyHomePage> {
                           ),
                           SizedBox(
                             child: Container(
-                             color: const Color(0xFFE3E7F1),
+                                color: const Color(0xFFFFFFFF),
                                 child: Column(
                                   mainAxisSize: MainAxisSize.max,
                                   children: <Widget>[
@@ -396,8 +452,8 @@ class _MyHomePageState extends State<MyHomePage> {
                           ),
                           Spacer(flex: 1),
                           SizedBox(
-                              width: 400,
-                              height: 35,
+                              width: 380,
+                              height: 50,
                               child: TextField(
                                 inputFormatters: [
                                   FilteringTextInputFormatter.digitsOnly
@@ -411,7 +467,9 @@ class _MyHomePageState extends State<MyHomePage> {
                                   })
                                 },
                                 decoration: const InputDecoration(
-                                    border: OutlineInputBorder(),
+                                    border: UnderlineInputBorder(
+                                        borderSide:
+                                            BorderSide(color: Colors.white)),
                                     fillColor: Colors.black38,
                                     hintText: 'Hours'),
                               )),
@@ -420,7 +478,7 @@ class _MyHomePageState extends State<MyHomePage> {
                           ),
                           SizedBox(
                             child: Container(
-                                color: const Color(0xFFE3E7F1),
+                                color: const Color(0xFFFFFFFF),
                                 child: Column(
                                   mainAxisSize: MainAxisSize.max,
                                   children: <Widget>[
@@ -458,8 +516,8 @@ class _MyHomePageState extends State<MyHomePage> {
                             flex: 1,
                           ),
                           SizedBox(
-                              width: 400,
-                              height: 35,
+                              width: 380,
+                              height: 50,
                               child: TextField(
                                 inputFormatters: [
                                   FilteringTextInputFormatter.digitsOnly
@@ -473,9 +531,11 @@ class _MyHomePageState extends State<MyHomePage> {
                                   })
                                 },
                                 decoration: const InputDecoration(
-                                    border: OutlineInputBorder(),
-                                    fillColor: Colors.black38,
-                                    hintText: 'Week two hours'),
+                                    border: UnderlineInputBorder(
+                                        borderSide:
+                                            BorderSide(color: Colors.white)),
+                                    fillColor: Colors.white,
+                                    hintText: 'Hours'),
                               )),
                           Spacer(
                             flex: 5,
@@ -553,40 +613,197 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                     Container(
                       child: Form(
-                          child:
-                          Column(children :[
-                            Spacer(flex: 1,),
-                          Row(
+                          child: Column(
                               children: [
-                            Spacer(flex: 2),
-                            Text("Schedule invoice reminder"),
-                            Spacer( flex: 10,),
-                            ElevatedButton(
-                                onPressed: () {
-                                  createNotification();
-                                },
-                                child: Container(
-                                  child: Icon(Icons.alarm),
-                                )),
-                            Spacer(flex: 2),
-                      ]),
-                            Row(
-                              children: [
-                                Spacer(flex: 2),
-                                Text("Add new Consultant"),
-                                Spacer( flex: 12,),
-                                ElevatedButton(
-                                    onPressed: () {
-                                      createNotification();
-                                    },
-                                    child: Container(
-                                      child: Icon(Icons.supervised_user_circle_rounded),
-                                    )),
-                                Spacer(flex: 2),
-                              ],
-                            ),
-                            Spacer(flex: 10),
-                          ])),
+                                Spacer(flex: 1,),
+                                ExpansionTile(
+                                  title: Text('Reminders'),
+                                  subtitle: Text('Invoice reminders'),
+                                  children: <Widget>[
+                                    Row(children: [
+                                      Spacer(flex: 1),
+                                      Text("Invoice due reminder"),
+                                      Spacer(flex: 10,),
+                                    ElevatedButton(
+                                        onPressed: () {
+                                          createNotification();
+                                        },
+                                        child: Container(
+                                          child: Icon(Icons.alarm),
+                                        )),
+                                      Spacer(flex: 1),])
+                                  ],
+                                ),
+                                ExpansionTile(
+                                  title: Text('Consultants'),
+                                  subtitle: Text('Add promote or remove '
+                                      'resources'),
+                                  children: <Widget>[
+                                    Row(children: [
+                                      Spacer(flex: 1),
+                                      Text("Add new Consultant"),
+                                      Spacer(flex: 10,),
+                                    ElevatedButton(
+                                        onPressed: () {
+                                          _showAddConsultantDialog();
+                                        },
+                                        child: Container(
+                                          child: Icon(
+                                              Icons.supervised_user_circle_rounded),
+                                        )),
+                                      Spacer(flex: 1),]),
+                                    SizedBox(
+                                        height: 200,
+                                        child: ListView.builder(
+                                            padding: const EdgeInsets.all(8),
+                                            itemCount: _consultants.length,
+                                            itemBuilder: (BuildContext context, int index) {
+                                              return UnconstrainedBox(
+                                                  alignment:
+                                                  AlignmentDirectional.centerStart,
+                                                  child: ChipItem
+                                                (_consultants[index], index + 1,
+                                                  'consultant'));
+                                            }
+                                        )
+                                    )
+                                  ],
+                                ),
+                                ExpansionTile(
+                                  title: Text('Clients'),
+                                  subtitle: Text('manage clients'),
+                                  children: <Widget>[
+                                    Row(children: [
+                                      Spacer(flex: 1),
+                                      Text("Add new Client"),
+                                      Spacer(flex: 10,),
+                                      ElevatedButton(
+                                          onPressed: () {
+                                            _showAddClientDialog();
+                                          },
+                                          child: Container(
+                                            child: Icon(Icons.add_business_outlined),
+                                          )),
+                                      Spacer(flex: 1),
+                                    ],),
+                                    SizedBox(
+                                        height: 200,
+                                        child: ListView.builder(
+                                            padding: const EdgeInsets.all(8),
+                                            itemCount: _clients.length,
+                                            itemBuilder: (BuildContext context, int index) {
+                                              return UnconstrainedBox(
+                                                  alignment:
+                                                  AlignmentDirectional.centerStart,
+                                                  child: ChipItem
+                                                (_clients[index], index + 1, ''
+                                                      'cli'
+                                                  'ent'));
+                                            }
+                                        )
+                                    )
+                                  ],
+                                ),
+                                ExpansionTile(
+                                  title: Text('Payments'),
+                                   subtitle: Text('Pay rate creation and '
+                                       'associations'),
+                                  children: <Widget>[
+                                    Row(children: [
+                                      Spacer(flex: 1),
+                                      Spacer(flex: 20,),
+                                    ],),
+                                    Row(children: [
+                                      Spacer(flex: 1),
+                                      Text("Pay rates"),
+                                      Spacer(flex: 12,),
+                                      ElevatedButton(
+                                          onPressed: () {
+                                            _showAddPayRateDialog();
+                                          },
+                                          child: Container(
+                                            child: Icon(Icons.add),
+                                          )),
+                                      Spacer(flex: 1),
+                                    ],),
+                                    Row(children: [
+                                      Spacer(flex: 1),
+                                      Spacer(flex: 18,),
+                                    ],),
+                                    SizedBox(
+                                        height: 100,
+                                        child: ListView.builder(
+                                            padding: const EdgeInsets.all(8),
+                                            itemCount: _hourlyRates.length,
+                                            itemBuilder: (BuildContext context, int index) {
+                                              return
+                                                UnconstrainedBox(
+                                                  alignment:
+                                                  AlignmentDirectional.centerStart,
+                                                  child: UnconstrainedBox(
+                                                  alignment:
+                                                  AlignmentDirectional.centerStart,
+                                                  child: UnconstrainedBox(
+                                                  alignment:
+                                                  AlignmentDirectional.centerStart,
+                                                  child: ChipItem
+                                                (_hourlyRates[index], index + 1,
+                                                  'rate'))));
+                                            }
+                                        )
+                                    )
+                                  ],
+                                ),
+                                ExpansionTile(
+                                  title: Text('Associations'),
+                                  subtitle: Text('client, consultant and pay '
+                                      'rate association'),
+                                  children: <Widget>[
+                                    Row(children: [
+                                      Spacer(flex: 1),
+                                      Spacer(flex: 20,),
+                                    ],),
+                                    Row(children: [
+                                      Spacer(flex: 1),
+
+                                    ],),
+                                    Row(children: [
+                                      Spacer(flex: 1),
+                                      Spacer(flex: 18,),
+                                    ],),
+                                    Row(children: [
+                                      Spacer(flex: 1),
+                                      Text("associations"),
+                                      Spacer(flex: 11,),
+                                      ElevatedButton(
+                                          onPressed: () {
+                                            _showAssociationDialog();
+                                          },
+                                          child: Container(
+                                            child: Icon(Icons.add),
+                                          )),
+                                      Spacer(flex: 1),
+                                    ],),
+                                    SizedBox(
+                                        height: 250,
+                                        child: ListView.builder(
+                                            padding: const EdgeInsets.all(8),
+                                            itemCount: _associations.length,
+                                            itemBuilder: (BuildContext context, int index) {
+                                              return
+                                                UnconstrainedBox(
+                                                    alignment:
+                                                    AlignmentDirectional.centerStart,
+                                                    child:
+                                              ChipItem(_associations[index],
+                                                  index + 1 , 'association'));
+                                            }
+                                        )
+                                    )
+                                  ],
+                                ),
+                        Spacer(flex: 10),
+                      ])),
                     )
                   ],
                 ),
@@ -609,6 +826,10 @@ class _MyHomePageState extends State<MyHomePage> {
   void dispose() {
     AwesomeNotifications().actionSink.close();
     AwesomeNotifications().createdSink.close();
+    sub1.cancel();
+    sub2.cancel();
+    sub3.cancel();
+    sub4.cancel();
     super.dispose();
   }
 
@@ -793,9 +1014,9 @@ class _MyHomePageState extends State<MyHomePage> {
         _hourlyRate.toString() +
         ' /hr' +
         '\r\nClient Name/location: ' +
-        _defaultClient +
+        _selectedClient +
         '\r\nConsultant Name: ' +
-        _consultant;
+        _selectedConsultant;
 
     final Size contentSize = contentFont.measureString(invoiceNumber);
     // ignore: leading_newlines_in_multiline_strings
@@ -1118,6 +1339,389 @@ class _MyHomePageState extends State<MyHomePage> {
 
     if (pickedSchedule != null) {
       createInvoiceNotification(pickedSchedule);
+    }
+  }
+
+  List<Consultant> _getConsultants() {
+    return _consultantsBox.getAll();
+  }
+
+  List<Client> _getClients() {
+    return _clientsBox.getAll();
+  }
+
+  List<PayRate> _getHourlyRates() {
+    return _ratesBox.getAll();
+  }
+
+  Future<void> _showAddClientDialog() async {
+    var add = '';
+    var nm = '';
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false, // user must tap button!
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Add a new Client', style: TextStyle(fontSize: 24)),
+          content: SingleChildScrollView(
+            child: Column(
+              children: <Widget>[
+                TextField(
+                  inputFormatters: [
+                    FilteringTextInputFormatter.singleLineFormatter
+                  ],
+                  keyboardType: TextInputType.text,
+                  onChanged: (val) => {
+                    setState(() {
+                      add = val;
+                    })
+                  },
+                  decoration: const InputDecoration(
+                      border: UnderlineInputBorder(
+                          borderSide: BorderSide(color: Colors.white)),
+                      fillColor: Colors.white,
+                      hintText: 'address'),
+                ),
+                TextField(
+                  inputFormatters: [
+                    FilteringTextInputFormatter.singleLineFormatter
+                  ],
+                  keyboardType: TextInputType.text,
+                  onChanged: (val) => {
+                    setState(() {
+                      nm = val;
+                    })
+                  },
+                  decoration: const InputDecoration(
+                      border: UnderlineInputBorder(
+                          borderSide: BorderSide(color: Colors.white)),
+                      fillColor: Colors.white,
+                      hintText: 'name'),
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: Text('Save'),
+              onPressed: () {
+                print('Save client ' + nm);
+                Navigator.of(context).pop();
+                var client = Client(address: add, name: nm);
+                addNewClient(client);
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void addNewClient(Client c) {
+    _clientsBox.put(c);
+  }
+
+  Future<void> _showAddPayRateDialog() async {
+    var payRate = '0';
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false, // user must tap button!
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Add new Pay Rate', style: TextStyle(fontSize: 24)),
+          content: SingleChildScrollView(
+            child: Column(
+              children: <Widget>[
+                TextField(
+                  inputFormatters: [
+                    FilteringTextInputFormatter.singleLineFormatter
+                  ],
+                  keyboardType: TextInputType.text,
+                  onChanged: (val) => {
+                    setState(() {
+                      payRate = val;
+                    })
+                  },
+                  decoration: const InputDecoration(
+                      border: UnderlineInputBorder(
+                          borderSide: BorderSide(color: Colors.white)),
+                      fillColor: Colors.white,
+                      hintText: 'Rate/hr'),
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: Text('Save'),
+              onPressed: () {
+                print('Save rate ' + payRate);
+                Navigator.of(context).pop();
+                var rate = PayRate(rate: payRate);
+                addPayRate(rate);
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void addPayRate(PayRate p) {
+    _ratesBox.put(p);
+  }
+
+  Future<void> _showAddConsultantDialog() async {
+    var consultantName;
+    var consultantTitle;
+
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false, // user must tap button!
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Add a new Consultant', style: TextStyle(fontSize: 24)),
+          content: SingleChildScrollView(
+            child: Column(
+              children: <Widget>[
+                TextField(
+                  inputFormatters: [
+                    FilteringTextInputFormatter.singleLineFormatter
+                  ],
+                  keyboardType: TextInputType.text,
+                  onChanged: (val) => {
+                    setState(() {
+                      consultantName = val;
+                    })
+                  },
+                  decoration: const InputDecoration(
+                      border: UnderlineInputBorder(
+                          borderSide: BorderSide(color: Colors.white)),
+                      fillColor: Colors.white,
+                      hintText: 'Name'),
+                ),
+                TextField(
+                  inputFormatters: [
+                    FilteringTextInputFormatter.singleLineFormatter
+                  ],
+                  keyboardType: TextInputType.text,
+                  onChanged: (val) => {
+                    setState(() {
+                      consultantTitle = val;
+                    })
+                  },
+                  decoration: const InputDecoration(
+                      border: UnderlineInputBorder(
+                          borderSide: BorderSide(color: Colors.white)),
+                      fillColor: Colors.white,
+                      hintText: 'title'),
+                )
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: Text('Save'),
+              onPressed: () {
+                print('Save consultant ' + consultantName);
+                Navigator.of(context).pop();
+                var consultant =
+                    Consultant(name: consultantName, title: consultantTitle);
+                addConsultant(consultant);
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void addConsultant(Consultant c) {
+    _consultantsBox.put(c);
+  }
+
+  void watchClients() {
+    Stream<Query<Client>> watchedClients = _clientsBox.query().watch();
+    sub1 = watchedClients.listen((Query<Client> query) {
+      // This gets triggered once right away and then after queried entity types changes.
+      _clients = [];
+      setState(() {
+        _getClients().forEach((client) {
+          _clients.add(client.name);
+        });
+      });
+    });
+  }
+  void watchPayRates() {
+    Stream<Query<PayRate>> watchedClients = _ratesBox.query().watch();
+    sub2 = watchedClients.listen((Query<PayRate> query) {
+      // This gets triggered once right away and then after queried entity types changes.
+      _hourlyRates = [];
+      setState(() {
+        _getHourlyRates().forEach((pr) {
+          _hourlyRates.add(pr.rate);
+        });
+      });
+    });
+  }
+  void watchConsultants() {
+    Stream<Query<Consultant>> watchedClients = _consultantsBox.query().watch();
+    sub3 = watchedClients.listen((Query<Consultant> query) {
+      // This gets triggered once right away and then after queried entity types changes.
+      _consultants = [];
+      setState(() {
+        _getConsultants().forEach((c) {
+          _consultants.add(c.name);
+        });
+      });
+    });
+  }
+  void watchAssociations() {
+    Stream<Query<Association>> watchedAssociations = _associationBox.query()
+        .watch();
+    sub4 = watchedAssociations.listen((Query<Association> query) {
+      // This gets triggered once right away and then after queried entity types changes.
+      _associations = [];
+      setState(() {
+        getAssociations().forEach((c) {
+          _associations.add(c);
+        });
+      });
+    });
+  }
+
+  ChipItem(String val, int id, String type) {
+    return  Chip(
+      onDeleted: () => deleteEntity(id, type),
+      backgroundColor: Colors.grey.shade50,
+      avatar: CircleAvatar(
+        backgroundColor: Colors.grey.shade800,
+        child:  Text(val.length > 2 ? val.substring(0,1) : 'A'),
+      ),
+      label: SizedBox(
+        height: 30,
+        child: Row(
+          children: [
+            Text(val)
+          ]),
+    ));
+  }
+
+  Future<void> _showAssociationDialog() async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false, // user must tap button!
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Make Association?', style: TextStyle(fontSize: 24)),
+          content: SingleChildScrollView(
+            child: Column(
+              children: <Widget>[
+                Column(
+                  children: [
+                    Row(children:[
+                      searchBar(getSelectedClient),
+                      Spacer(flex: 1,)
+                    ]),
+                    Row(children:[
+                      searchBar(getSelectedConsultant),
+                      Spacer(flex: 1,)
+                    ]),
+                    Row(children:[
+                      searchBar(getSelectedPayRate),
+                      Spacer(flex: 1,)
+                    ]),
+                  ],
+                )
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: Text('Save'),
+              onPressed: () {
+                print('Confirmed');
+                Navigator.of(context).pop();
+                associateResourceRate();
+              },
+            ),
+            TextButton(
+              child: Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  searchBar(Function getter){
+    return Text(getter());
+  }
+
+  void associateResourceRate() {
+    _associationBox.put(Association(clientName: getSelectedClient(),
+        consultantName: getSelectedConsultant(), rate: getSelectedPayRate()));
+  }
+
+  getSelectedClient() {
+    return _selectedClient;
+  }
+  getSelectedConsultant() {
+    return _selectedConsultant;
+  }
+  getSelectedPayRate() {
+    return ' \$' + _selectedHourlyRate + '/hr';
+  }
+
+  List<String> getAssociations() {
+    var associations = _associationBox.getAll();
+    associations.forEach((a) => _associations.add(a.consultantName + '-' + a
+        .clientName + '-' + a.rate));
+    return _associations;
+  }
+
+  void deleteEntity(int id, String type) {
+    switch (type) {
+      case 'client': {
+          _clientsBox.remove(id);
+        break;
+      }
+      case 'consultant': {
+        _consultantsBox.remove(id);
+        break;
+      }
+      case 'association': {
+       _associationBox.remove(id);
+        break;
+      }
+      case 'rate': {
+      _ratesBox.remove(id);
+        break;
+      }
+      default: {
+        break;
+      }
     }
   }
 }

@@ -27,7 +27,6 @@ class PDFScreen extends StatefulWidget {
   required this.label, required this.invoiceBox}) :
         super(key: key) {
 
-
     // get the invoice from db
     _currentInvoice = invoiceBox.get(invoiceId);
   }
@@ -88,14 +87,6 @@ class _PDFScreenState extends State<PDFScreen> with WidgetsBindingObserver {
         ),
       ],
     )
-    // FloatingActionButton(
-    //   onPressed: deleteInvoice,
-    //   tooltip: 'delete Invoice',
-    //   child: Icon(
-    //     Icons.delete,
-    //     size: 30,
-    //   ),
-    // ),
     );
   }
 
@@ -147,7 +138,7 @@ class _PDFScreenState extends State<PDFScreen> with WidgetsBindingObserver {
     );
   }
 
-    Future<String> get _localPath async {
+  Future<String> get _localPath async {
     final directory = await getApplicationDocumentsDirectory();
     return directory.path;
   }
@@ -207,7 +198,7 @@ class _PDFScreenState extends State<PDFScreen> with WidgetsBindingObserver {
     //Draw the watermark text to the desired position over the PDF page with red color
     graphics.drawString('Invoice Paid!', font,
         pen: PdfPen(PdfColor(255, 0, 0)),
-        brush: PdfBrushes.red,
+        brush: PdfBrushes.green,
         bounds: Rect.fromLTWH(
             -size.width / 2, -size.height / 2, size.width, size.height));
     //Restore the graphics
