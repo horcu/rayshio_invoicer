@@ -1,19 +1,20 @@
 
 
-import 'dart:async';
+
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:objectbox/objectbox.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:rayshio_invoicer/helpers/ObjectBox.dart';
 import 'package:rayshio_invoicer/models/Invoice.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'main.dart';
+import 'models/Client.dart';
 import 'objectbox.g.dart';
 
 class PDFScreen extends StatefulWidget {
@@ -21,14 +22,17 @@ class PDFScreen extends StatefulWidget {
   String label;
   int invoiceId;
   Box invoiceBox;
+  Box clientBox;
   late Invoice _currentInvoice;
+  late Client _selectedPartner;
 
   PDFScreen({required Key? key, required this.path, required this.invoiceId,
-  required this.label, required this.invoiceBox}) :
+  required this.label, required this.invoiceBox, required this.clientBox}) :
         super(key: key) {
 
     // get the invoice from db
     _currentInvoice = invoiceBox.get(invoiceId);
+    _selectedPartner = clientBox.get(_currentInvoice.clientId);
   }
 
   _PDFScreenState createState() => _PDFScreenState();
@@ -152,14 +156,18 @@ class _PDFScreenState extends State<PDFScreen> with WidgetsBindingObserver {
     try {
       final file = await _localFile;
       setState(() async {
-        await file.delete();
         widget.invoiceBox.remove(widget.invoiceId);
+        if(file.existsSync()) {
+          await file.delete();
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => MyHomePage(key: widget.key,
+                title: 'Raysh.io LLC')),
+          );
+        } else {
 
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => MyHomePage(key: widget.key,
-              title: 'Raysh.io LLC')),
-        );
+        }
+
       });
     } catch (e) {
 

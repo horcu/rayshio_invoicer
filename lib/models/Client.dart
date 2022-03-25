@@ -3,9 +3,12 @@ import 'package:objectbox/objectbox.dart';
 @Entity()
 class Client {
 
-  Client({required this.name, required this.address});
+  Client();
 
   int id = 0;
   String name = '';
-  String address = '';
+  String address1 = '';
+  String address2 = '';
+  String address3 = '';
+  String address4 = '';
 }
